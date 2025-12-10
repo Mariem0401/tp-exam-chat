@@ -1,0 +1,118 @@
+<!-- frontend/index.html -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>TP Exam Chat</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; display:flex; flex-direction:column; height:100vh; }
+  header{padding:12px; background:#0f172a; color:white}
+  main{flex:1; display:flex; flex-direction:column; padding:12px; gap:8px}
+  #messages{flex:1; overflow:auto; border:1px solid #ddd; padding:8px; border-radius:8px; background:#fafafa}
+  .msg{padding:6px; border-bottom:1px solid #eee}
+  .meta{font-size:12px;color:#666}
+  form{display:flex; gap:8px}
+  input[type="text"], textarea{padding:8px; border-radius:6px; border:1px solid #ccc; flex:1}
+  button{padding:10px 14px; border-radius:6px; border:none; background:#0ea5e9; color:white}
+  @media (max-width:600px){ header{font-size:16px} }
+</style>
+</head>
+<body>
+<header><h1 style="margin:0;font-size:18px">Mini Chat (TP Exam)</h1></header>
+<main>
+  <div>
+    <label>Pseudo: <input id="author" type="text" placeholder="Ton pseudo"></label>
+    <button id="save-pseudo">Enregistrer</button>
+  </div>
+  <div id="messages" aria-live="polite"></div>
+
+  <form id="sendForm">
+    <input id="content" type="text" placeholder="Écris un message..." autocomplete="off" />
+    <button type="submit">Envoyer</button>
+  </form>
+  <div style="display:flex; gap:8px; justify-content:space-between; align-items:center;">
+    <small id="status">Statut: ---</small>
+    <button id="refresh">Actualiser</button>
+  </div>
+</main>
+
+<script>
+  // BACKEND_URL doit être défini en tant que variable d'environnement par Vercel
+const BACKEND_URL = (typeof window.BACKEND_URL !== 'undefined') ? window.BACKEND_URL : (window.__BACKEND_URL__ || '');
+const API_BASE = BACKEND_URL || 'http://localhost:3000'; // fallback local pour test
+
+
+  const messagesBox = document.getElementById('messages');
+  const authorInput = document.getElementById('author');
+  const savePseudoBtn = document.getElementById('save-pseudo');
+  const sendForm = document.getElementById('sendForm');
+  const contentInput = document.getElementById('content');
+  const statusEl = document.getElementById('status');
+  const refreshBtn = document.getElementById('refresh');
+
+  // load pseudo saved
+  authorInput.value = localStorage.getItem('chat_author') || '';
+
+  savePseudoBtn.onclick = (e) => {
+    e.preventDefault();
+    localStorage.setItem('chat_author', authorInput.value.trim());
+    alert('Pseudo sauvegardé');
+  };
+
+  async function fetchMessages() {
+    try {
+      const res = await fetch(`${API_BASE}/api/messages`);
+      if (!res.ok) throw new Error('Fetch failed');
+      const msgs = await res.json();
+      renderMessages(msgs);
+      statusEl.textContent = 'Statut: connecté';
+    } catch (err) {
+      statusEl.textContent = 'Statut: erreur de connexion';
+      console.error(err);
+    }
+  }
+
+  function renderMessages(msgs) {
+    messagesBox.innerHTML = '';
+    msgs.slice().reverse().forEach(m=>{
+      const d = new Date(m.time);
+      const div = document.createElement('div');
+      div.className = 'msg';
+      div.innerHTML = `<div><strong>${escapeHtml(m.author)}</strong> <span class="meta">${d.toLocaleString()}</span></div>
+                       <div>${escapeHtml(m.content)}</div>`;
+      messagesBox.appendChild(div);
+    });
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+  }
+
+  function escapeHtml(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  sendForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const author = (localStorage.getItem('chat_author') || authorInput.value || 'Anonyme').trim();
+    const content = contentInput.value.trim();
+    if (!content) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/messages`, {
+        method:'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ author, content })
+      });
+      if (!res.ok) throw new Error('send failed');
+      contentInput.value = '';
+      await fetchMessages();
+    } catch (err) {
+      alert('Impossible d\'envoyer le message');
+      console.error(err);
+    }
+  });
+
+  refreshBtn.onclick = fetchMessages;
+
+  // polling toutes les 3s
+  fetchMessages();
+  setInterval(fetchMessages, 3000);
+</script>
+</body>
+</html>
